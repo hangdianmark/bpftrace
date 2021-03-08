@@ -7,7 +7,7 @@ BEGIN
 
 tracepoint:sched:sched_wakeup,
 tracepoint:sched:sched_wakeup_new
-/(args->pid==$1) && (@qtime[$1, args->target_cpu] == 0)/
+/(args->pid==$1)/
 {
 	//用来记录唤醒前的时间，唤醒时，即开始入队，调度延迟开始计算
         @qtime[$1, args->target_cpu] = nsecs;
@@ -24,6 +24,8 @@ tracepoint:sched:sched_migrate_task
 	@qtime[$1, args->dest_cpu] = @qtime[$1, args->orig_cpu];
 	//删除之前的map变量
 	delete(@qtime[$1, args->orig_cpu]);
+	//这里务必记得删除，因为migrate的时候可能之前cpu的softirq_entry已经进入，那softstart_vec这个值已经无效
+	delete(@softstart_vec[$1, args->orig_cpu]);
 }
 
 tracepoint:irq:softirq_entry
@@ -46,7 +48,7 @@ tracepoint:irq:softirq_exit
 }
 
 tracepoint:sched:sched_switch
-/@qtime[$1,@wake_cpu] && (args->next_pid==$1)/
+/(args->next_pid==$1)/
 {
 	//如果此次软中断的干扰时间大于设定的阈值，进行详细信息的打印
         if (@sum[$1] > $2) {
@@ -75,9 +77,9 @@ tracepoint:sched:sched_switch
 	delete(@sum_vec[9, args->next_pid]);
 
 	//由于delet以后wakecpu的默认值为0，可能和cpu0混淆，这里设定一个特定的值	
-	@wake_cpu=10086;
 	delete(@qtime[$1, @wake_cpu]);
 	delete(@sum[$1]);
+	@wake_cpu=10086;
 }
 
 END
